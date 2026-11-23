@@ -1,0 +1,509 @@
+openapi: 3.0.3
+info:
+  title: API de Jogos
+  description: >-
+    API REST de uma lista pessoal de jogos (inspirada no MyAnimeList) feita em PHP puro,
+    com PDO e MariaDB. Todos os endpoints ficam no arquivo tarefas.php e o que muda é o
+    método HTTP e os parâmetros da URL. Métodos não suportados retornam 405.
+  version: 1.0.0
+servers:
+  - url: http://localhost/jogos/api
+tags:
+  - name: Jogos
+    description: CRUD de jogos, listas de apoio (plataformas e gêneros) e estatísticas
+paths:
+  /tarefas.php:
+    get:
+      tags: [Jogos]
+      summary: Lista jogos, busca um jogo, lista opções de apoio ou retorna estatísticas
+      description: >-
+        O mesmo endpoint atende vários usos, escolhidos pelos parâmetros da URL.
+        Com o parâmetro id retorna apenas um jogo. Com plataformas=1 retorna a lista de
+        plataformas cadastradas. Com generos=1 retorna a lista de gêneros aceitos. Com
+        estatisticas=1 retorna os números gerais da coleção. Sem nenhum desses, retorna a
+        lista de jogos, que pode ser filtrada por status, buscada pelo nome e ordenada.
+        Os parâmetros status, buscar e ordem podem ser combinados entre si.
+        Cada jogo da lista já vem com o campo plataformas (nomes em ordem alfabética).
+      parameters:
+        - name: id
+          in: query
+          required: false
+          description: Identificador do jogo. Quando informado, retorna só esse jogo.
+          schema:
+            type: integer
+            example: 1
+        - name: plataformas
+          in: query
+          required: false
+          description: Use plataformas=1 para listar as plataformas cadastradas (id e nome).
+          schema:
+            type: integer
+            example: 1
+        - name: generos
+          in: query
+          required: false
+          description: Use generos=1 para listar os gêneros aceitos.
+          schema:
+            type: integer
+            example: 1
+        - name: estatisticas
+          in: query
+          required: false
+          description: Use estatisticas=1 para obter as estatísticas gerais da coleção.
+          schema:
+            type: integer
+            example: 1
+        - name: status
+          in: query
+          required: false
+          description: Filtra a lista pelo status do jogo.
+          schema:
+            $ref: '#/components/schemas/Status'
+        - name: buscar
+          in: query
+          required: false
+          description: Busca jogos cujo nome contenha o texto informado. Não pode ser vazio.
+          schema:
+            type: string
+            minLength: 1
+            example: zelda
+        - name: ordem
+          in: query
+          required: false
+          description: Ordenação da lista. Por padrão é nome. Em nota, as maiores vêm primeiro e jogos sem nota ficam no fim.
+          schema:
+            type: string
+            enum: [nome, nota]
+            example: nota
+      responses:
+        '200':
+          description: Depende dos parâmetros usados (veja os exemplos)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/Jogo'
+                  - $ref: '#/components/schemas/Jogo'
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/Plataforma'
+                  - type: array
+                    items:
+                      type: string
+                  - $ref: '#/components/schemas/Estatisticas'
+              examples:
+                lista:
+                  summary: Lista de jogos (sem parâmetros, ou com status, buscar e ordem)
+                  value:
+                    - id_jogo: 2
+                      nome: God of War
+                      descricao: Aventura épica com Kratos e Atreus
+                      genero: Ação
+                      status: Zerado
+                      nota: 9
+                      horas_jogadas: 50
+                      data_inicio: '2022-11-01'
+                      data_fim: '2022-12-15'
+                      favorito: 0
+                      plataformas: [PlayStation 4]
+                    - id_jogo: 3
+                      nome: Hollow Knight
+                      descricao: Metroidvania desafiador com belos gráficos
+                      genero: Puzzle e Plataforma
+                      status: Planejo Jogar
+                      nota: null
+                      horas_jogadas: 0
+                      data_inicio: '2023-02-10'
+                      data_fim: null
+                      favorito: 0
+                      plataformas: [Nintendo Switch, PC]
+                umJogo:
+                  summary: Um jogo (com id)
+                  value:
+                    id_jogo: 3
+                    nome: Hollow Knight
+                    descricao: Metroidvania desafiador com belos gráficos
+                    genero: Puzzle e Plataforma
+                    status: Planejo Jogar
+                    nota: null
+                    horas_jogadas: 0
+                    data_inicio: '2023-02-10'
+                    data_fim: null
+                    favorito: 0
+                    plataformas: [Nintendo Switch, PC]
+                plataformas:
+                  summary: Lista de plataformas (plataformas=1)
+                  value:
+                    - id_plataforma: 6
+                      nome: Nintendo Switch
+                    - id_plataforma: 1
+                      nome: PC
+                generos:
+                  summary: Lista de gêneros (generos=1)
+                  value: [Ação, Aventura, RPG, Estratégia, Tiro, Esporte e Corrida, Simulação, Terror, Puzzle e Plataforma, Outro]
+                estatisticas:
+                  summary: Estatísticas (estatisticas=1)
+                  value:
+                    total_jogos: 3
+                    jogos_zerados: 1
+                    total_horas: 170
+                    media_horas: 56.67
+                    media_nota: 9.5
+                    total_favorito: 1
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '422':
+          description: Parâmetro inválido (status fora da lista, buscar vazio ou ordem inexistente)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: 'Status inválido. Use um dos seguintes: Planejo Jogar, Jogando, Zerado, Abandonado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    post:
+      tags: [Jogos]
+      summary: Cria um jogo
+      description: >-
+        Cria o jogo e vincula as plataformas informadas, tudo em uma transação (ou grava
+        tudo, ou não grava nada). A API valida os dados antes de gravar e responde 422
+        no primeiro problema encontrado. Se o status for Zerado e a data_fim não for
+        enviada, ela é preenchida com a data de hoje.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JogoEntrada'
+            examples:
+              completo:
+                summary: Jogo com todos os campos
+                value:
+                  nome: Hollow Knight
+                  descricao: Metroidvania desafiador
+                  genero: Puzzle e Plataforma
+                  status: Jogando
+                  nota: 9
+                  horas_jogadas: 30
+                  data_inicio: '2026-10-01'
+                  plataformas: [1, 6]
+              minimo:
+                summary: Apenas os campos obrigatórios
+                value:
+                  nome: Celeste
+                  genero: Puzzle e Plataforma
+                  status: Planejo Jogar
+                  plataformas: [1]
+      responses:
+        '201':
+          description: Jogo criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Criado'
+        '422':
+          $ref: '#/components/responses/DadosInvalidos'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    put:
+      tags: [Jogos]
+      summary: Atualiza um jogo
+      description: >-
+        Substitui os dados do jogo e refaz o vínculo com as plataformas, em uma transação.
+        Os campos são os mesmos do cadastro, e todos os obrigatórios precisam ser enviados
+        de novo. Regras da data_fim, conforme o status. Se o novo status for Zerado e a
+        data_fim não for enviada, mantém a data já gravada (quando o jogo já era Zerado)
+        ou usa a data de hoje. Se o novo status não for Zerado, a data_fim fica vazia.
+        O campo favorito é opcional, e se não for enviado mantém o valor atual.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: Identificador do jogo
+          schema:
+            type: integer
+            example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JogoEntrada'
+            example:
+              nome: Hollow Knight
+              descricao: Zerado em 100%
+              genero: Puzzle e Plataforma
+              status: Zerado
+              nota: 10
+              horas_jogadas: 45
+              data_inicio: '2026-10-01'
+              favorito: 1
+              plataformas: [1]
+      responses:
+        '200':
+          description: Jogo atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensagem'
+              example:
+                mensagem: Jogo atualizado
+        '400':
+          description: Id não informado na URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Informe o id na URL
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '422':
+          $ref: '#/components/responses/DadosInvalidos'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+    delete:
+      tags: [Jogos]
+      summary: Remove um jogo
+      description: Remove o jogo e, por consequência, os vínculos dele com as plataformas.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: Identificador do jogo
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: Jogo removido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensagem'
+              example:
+                mensagem: Jogo removido
+        '400':
+          description: Id não informado na URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Informe o id na URL
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '500':
+          $ref: '#/components/responses/ErroInterno'
+components:
+  schemas:
+    Genero:
+      type: string
+      description: Gênero principal do jogo
+      enum:
+        - Ação
+        - Aventura
+        - RPG
+        - Estratégia
+        - Tiro
+        - Esporte e Corrida
+        - Simulação
+        - Terror
+        - Puzzle e Plataforma
+        - Outro
+      example: Aventura
+    Status:
+      type: string
+      description: Situação do jogo na lista
+      enum: [Planejo Jogar, Jogando, Zerado, Abandonado]
+      example: Jogando
+    Jogo:
+      type: object
+      properties:
+        id_jogo:
+          type: integer
+          example: 1
+        nome:
+          type: string
+          example: Hollow Knight
+        descricao:
+          type: string
+          nullable: true
+          example: Metroidvania desafiador
+        genero:
+          $ref: '#/components/schemas/Genero'
+        status:
+          $ref: '#/components/schemas/Status'
+        nota:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 10
+          description: Nota de 0 a 10. Nulo quando o jogo ainda não foi avaliado.
+        horas_jogadas:
+          type: integer
+          example: 30
+        data_inicio:
+          type: string
+          format: date
+          example: '2026-10-01'
+        data_fim:
+          type: string
+          format: date
+          nullable: true
+          description: Preenchida apenas em jogos com status Zerado
+        favorito:
+          type: integer
+          enum: [0, 1]
+          description: 0 = não favorito, 1 = favorito
+        plataformas:
+          type: array
+          description: Nomes das plataformas do jogo, em ordem alfabética
+          items:
+            type: string
+          example: [Nintendo Switch, PC]
+    Plataforma:
+      type: object
+      properties:
+        id_plataforma:
+          type: integer
+          example: 1
+        nome:
+          type: string
+          example: PC
+    JogoEntrada:
+      type: object
+      required: [nome, genero, status, plataformas]
+      properties:
+        nome:
+          type: string
+          maxLength: 60
+          example: Hollow Knight
+        descricao:
+          type: string
+          nullable: true
+          description: Texto livre. Vazio é gravado como nulo.
+        genero:
+          $ref: '#/components/schemas/Genero'
+        status:
+          $ref: '#/components/schemas/Status'
+        nota:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 10
+          description: Número inteiro de 0 a 10, ou nulo para jogo sem nota
+        horas_jogadas:
+          type: integer
+          minimum: 0
+          default: 0
+        data_inicio:
+          type: string
+          format: date
+          description: Formato AAAA-MM-DD, não pode ser futura. Se não for enviada, usa a data de hoje.
+        data_fim:
+          type: string
+          format: date
+          nullable: true
+          description: Só pode ser enviada com status Zerado. Não pode ser futura nem anterior à data de início.
+        favorito:
+          type: integer
+          enum: [0, 1]
+          description: Usado apenas no PUT
+        plataformas:
+          type: array
+          minItems: 1
+          description: Ids das plataformas do jogo (veja GET com plataformas=1). Ids repetidos são ignorados.
+          items:
+            type: integer
+          example: [1, 6]
+    Estatisticas:
+      type: object
+      properties:
+        total_jogos:
+          type: integer
+          example: 3
+        jogos_zerados:
+          type: integer
+          example: 1
+        total_horas:
+          type: integer
+          example: 170
+        media_horas:
+          type: number
+          nullable: true
+          description: Nulo quando não há jogos
+          example: 56.67
+        media_nota:
+          type: number
+          nullable: true
+          description: Nulo quando não há jogos com nota
+          example: 9.5
+        total_favorito:
+          type: integer
+          example: 1
+    Criado:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 4
+        mensagem:
+          type: string
+          example: Jogo criado
+    Mensagem:
+      type: object
+      properties:
+        mensagem:
+          type: string
+    Erro:
+      type: object
+      properties:
+        erro:
+          type: string
+          example: Descrição do erro
+  responses:
+    NaoEncontrado:
+      description: Jogo não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            erro: Jogo não encontrado
+    DadosInvalidos:
+      description: >-
+        Dados inválidos. A API responde com a mensagem do primeiro problema encontrado,
+        na ordem nome, gênero, status, nota, horas jogadas, plataformas, data de início e data de fim.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          examples:
+            nomeObrigatorio:
+              summary: Nome vazio
+              value:
+                erro: O nome é obrigatório
+            notaInvalida:
+              summary: Nota fora da faixa
+              value:
+                erro: A nota deve ser um número inteiro entre 0 e 10
+            semPlataforma:
+              summary: Nenhuma plataforma informada
+              value:
+                erro: Informe pelo menos uma plataforma
+            dataFimIndevida:
+              summary: Data de término em jogo que não está Zerado
+              value:
+                erro: A data de término só pode ser informada se o status for "Zerado"
+    ErroInterno:
+      description: Erro interno no banco de dados
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            erro: Erro interno no banco de dados
